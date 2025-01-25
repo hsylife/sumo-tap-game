@@ -2,6 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Sumo Tap Game</title>
   <style>
     body {
@@ -21,8 +22,8 @@
       position: relative;
       margin: 0 auto;
       border: 2px solid #ccc;
-      width: 400px;   /* ゲームエリアの幅 */
-      height: 600px;  /* ゲームエリアの高さ */
+      width: 100vw;   /* ゲームエリアの幅 */
+      height: 100vh;  /* ゲームエリアの高さ */
       background-color: #fff;
       overflow: hidden;
     }
@@ -30,14 +31,14 @@
     /* お相撲さんのスタイル。必要に応じてサイズや画像を変更 */
     .sumo {
       position: absolute;
-      width: 80px;
-      height: 80px;
+      width: 10vw;
+      height: 10vw;
       cursor: pointer;
       user-select: none;
       transition: transform 0.2s;
     }
 
-    /* タップ時にちょっと縮む(または光る)演出 */
+    /* タップ時にちょっと縮む演出 */
     .sumo:active {
       transform: scale(0.9);
     }
