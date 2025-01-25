@@ -2,48 +2,66 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- 画面幅に合わせて縮尺するためのviewport指定 -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Sumo Tap Game</title>
   <style>
-    body {
+    /* 全画面＆余白やスクロールをなくす */
+    html, body {
       margin: 0;
       padding: 0;
-      text-align: center;
+      height: 100%;
+      overflow: hidden; /* スクロールを発生させない */
       font-family: sans-serif;
       background-color: #f5f5f5;
+      box-sizing: border-box;
     }
 
-    h1 {
-      margin-top: 20px;
+    /* コンテナを上下に分割するためFlexレイアウトを使用 */
+    .container {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      text-align: center;
+    }
+
+    header {
+      flex: 0 0 auto; /* 高さは内容分だけで固定される */
+      padding: 10px 0;
+      background-color: #f5f5f5;
       color: #333;
     }
 
+    header h1 {
+      margin: 0;
+      font-size: 1.2rem;
+    }
+
+    /* ゲームエリアは上部以外の全てを埋める */
     #gameArea {
       position: relative;
-      margin: 0 auto;
-      border: 2px solid #ccc;
-      width: 100vw;   /* ゲームエリアの幅 */
-      height: 100vh;  /* ゲームエリアの高さ */
+      flex: 1 1 auto; /* 残りのスペースを埋める */
+      border-top: 2px solid #ccc; /* 視覚的に分割 */
       background-color: #fff;
       overflow: hidden;
     }
 
-    /* お相撲さんのスタイル。必要に応じてサイズや画像を変更 */
+    /* お相撲さんのスタイル（相対サイズに変更） */
     .sumo {
       position: absolute;
-      width: 10vw;
-      height: 10vw;
+      width: 15vmin;  /* 画面に応じて変わる */
+      height: 15vmin; /* 正方形を保つ */
       cursor: pointer;
       user-select: none;
       transition: transform 0.2s;
     }
 
-    /* タップ時にちょっと縮む演出 */
+    /* タップ時の演出 */
     .sumo:active {
       transform: scale(0.9);
     }
 
-    /* 「どすこい」表示用の吹き出し風スタイル */
+    /* 「どすこい」吹き出し風 */
     .dosukoi {
       position: absolute;
       padding: 5px 10px;
@@ -52,60 +70,68 @@
       border-radius: 10px;
       font-weight: bold;
       animation: fadeOut 1s forwards;  /* 1秒かけて消えていく */
+      pointer-events: none; /* タップを拾わない */
     }
 
     /* ふわっと消えるアニメーション */
     @keyframes fadeOut {
-      0% { opacity: 1; }
+      0%   { opacity: 1; }
       100% { opacity: 0; }
     }
   </style>
 </head>
 <body>
-
-  <h1>お相撲さんをタップして「どすこい」！</h1>
-  <div id="gameArea"></div>
+  <div class="container">
+    <header>
+      <h1>お相撲さんをタップして「どすこい」！</h1>
+    </header>
+    <main id="gameArea"></main>
+  </div>
 
   <script>
-    // ゲーム設定
+    // ゲームエリア取得
     const gameArea = document.getElementById('gameArea');
-    const gameWidth = gameArea.clientWidth;
-    const gameHeight = gameArea.clientHeight;
 
-    // お相撲さんの画像URL(例: フリー素材など適宜ご利用ください)
-    const sumoImageURL = "osumousan.png"; 
-    // ↑仮のプレースホルダ画像。実際にはお好きな画像ファイルを指定
+    // 画像ファイルを同ディレクトリに置く想定
+    const sumoImageURL = "./osumousan.png";
 
-    // お相撲さんを定期的にスポーンさせる
-    const spawnInterval = 1000; // 1000ms(1秒)ごとに一体スポーン
+    // スポーン間隔(ms)
+    const spawnInterval = 1000;
     let spawnTimer;
 
-    // お相撲さんを生成する関数
+    // お相撲さんを生成して落下させる関数
     function spawnSumo() {
+      // ゲームエリアの幅・高さを毎回再取得（画面回転等に対応可能）
+      const gameRect = gameArea.getBoundingClientRect();
+      const gameWidth = gameRect.width;
+      const gameHeight = gameRect.height;
+
+      // img要素作成
       const sumo = document.createElement('img');
       sumo.src = sumoImageURL;
       sumo.className = 'sumo';
-      // 初期位置をランダムに設定
-      const startX = Math.floor(Math.random() * (gameWidth - 80));
-      sumo.style.left = startX + 'px';
-      sumo.style.top = '-80px'; // 画面上部の外から出現
 
-      // タップ(クリック)したら消えて「どすこい」を表示
+      // 初期位置(横方向はランダムに、縦方向は上外から出現)
+      const sumoSize = Math.min(gameWidth, gameHeight) * 0.15; // 15vmin相当
+      const startX = Math.random() * (gameWidth - sumoSize);
+      sumo.style.left = startX + 'px';
+      sumo.style.top = (-sumoSize) + 'px';
+
+      // タップ(クリック)で消して「どすこい」表示
       sumo.addEventListener('click', () => {
         showDosukoi(sumo.offsetLeft, sumo.offsetTop);
-        // お相撲さんをゲームエリアから除去
         sumo.remove();
       });
 
       gameArea.appendChild(sumo);
 
-      // 落下アニメーション：requestAnimationFrameでループ
-      let posY = -80;
+      // 落下アニメーション
+      let posY = -sumoSize;
       function fall() {
-        posY += 2; // 落下速度は2px/フレームくらい(調整自由)
+        posY += 2; // 落下速度(ピクセル/フレーム)
         sumo.style.top = posY + 'px';
 
-        // 画面外まで落ちたら消す
+        // 画面外下まで落ちたら要素を除去
         if (posY > gameHeight) {
           sumo.remove();
         } else {
@@ -115,15 +141,15 @@
       requestAnimationFrame(fall);
     }
 
-    // 「どすこい」表示
+    // 「どすこい」を表示する関数
     function showDosukoi(x, y) {
       const text = document.createElement('div');
       text.className = 'dosukoi';
       text.textContent = 'どすこい！';
 
-      // 表示位置はクリックされたお相撲さん付近に調整
-      text.style.left = (x + 20) + 'px';
-      text.style.top = (y + 20) + 'px';
+      // お相撲さん付近に表示
+      text.style.left = (x + 10) + 'px';
+      text.style.top = (y + 10) + 'px';
 
       gameArea.appendChild(text);
 
@@ -138,7 +164,7 @@
       spawnTimer = setInterval(spawnSumo, spawnInterval);
     }
 
-    // ゲーム停止(必要に応じて使う)
+    // ゲーム停止
     function stopGame() {
       clearInterval(spawnTimer);
     }
