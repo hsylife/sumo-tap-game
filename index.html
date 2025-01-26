@@ -2,22 +2,20 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <!-- 画面幅に合わせて縮尺するためのviewport指定 -->
+  <!-- 画面幅に合わせて縮尺 -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Sumo Tap Game</title>
   <style>
-    /* 全画面＆余白やスクロールをなくす */
     html, body {
       margin: 0;
       padding: 0;
       height: 100%;
-      overflow: hidden; /* スクロールを発生させない */
+      overflow: hidden; /* スクロールしない */
       font-family: sans-serif;
       background-color: #f5f5f5;
       box-sizing: border-box;
     }
 
-    /* コンテナを上下に分割するためFlexレイアウトを使用 */
     .container {
       display: flex;
       flex-direction: column;
@@ -26,42 +24,46 @@
     }
 
     header {
-      flex: 0 0 auto; /* 高さは内容分だけで固定される */
+      flex: 0 0 auto;
       padding: 10px 0;
       background-color: #f5f5f5;
       color: #333;
+      border-bottom: 2px solid #ccc;
     }
 
     header h1 {
       margin: 0;
       font-size: 1.2rem;
+      margin-bottom: 8px;
     }
 
-    /* ゲームエリアは上部以外の全てを埋める */
+    /* スコアや残り時間を表示 */
+    .info {
+      display: flex;
+      justify-content: center;
+      gap: 20px;
+      font-weight: bold;
+    }
+
     #gameArea {
       position: relative;
-      flex: 1 1 auto; /* 残りのスペースを埋める */
-      border-top: 2px solid #ccc; /* 視覚的に分割 */
+      flex: 1 1 auto;
       background-color: #fff;
       overflow: hidden;
     }
 
-    /* お相撲さんのスタイル（相対サイズに変更） */
     .sumo {
       position: absolute;
-      width: 15vmin;  /* 画面に応じて変わる */
-      height: 15vmin; /* 正方形を保つ */
+      width: 15vmin;
+      height: 15vmin;
       cursor: pointer;
       user-select: none;
       transition: transform 0.2s;
     }
-
-    /* タップ時の演出 */
     .sumo:active {
       transform: scale(0.9);
     }
 
-    /* 「どすこい」吹き出し風 */
     .dosukoi {
       position: absolute;
       padding: 5px 10px;
@@ -69,69 +71,139 @@
       border: 1px solid #ccc;
       border-radius: 10px;
       font-weight: bold;
-      animation: fadeOut 1s forwards;  /* 1秒かけて消えていく */
-      pointer-events: none; /* タップを拾わない */
+      animation: fadeOut 1s forwards;
+      pointer-events: none;
     }
 
-    /* ふわっと消えるアニメーション */
     @keyframes fadeOut {
       0%   { opacity: 1; }
       100% { opacity: 0; }
+    }
+
+    /* ゲームオーバー時の画面表示 */
+    #gameOverOverlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.5); /* 半透明の背景 */
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      color: #fff;
+      font-size: 2rem;
+      visibility: hidden; /* 初期は非表示 */
+    }
+
+    #gameOverOverlay h2 {
+      margin: 0 0 20px;
+    }
+
+    #restartButton {
+      padding: 10px 20px;
+      font-size: 1rem;
+      cursor: pointer;
+      border: none;
+      border-radius: 8px;
+      background-color: #fde910;
+      color: #333;
+      font-weight: bold;
     }
   </style>
 </head>
 <body>
   <div class="container">
     <header>
-      <h1>お相撲さんをタップして「どすこい」！</h1>
+      <h1>お相撲さんをタップしてストレス解消！</h1>
+      <div class="info">
+        <div>スコア: <span id="score">0</span></div>
+        <div>残り時間: <span id="timeLeft">30</span>秒</div>
+      </div>
     </header>
-    <main id="gameArea"></main>
+    <main id="gameArea">
+      <div id="gameOverOverlay">
+        <h2>Game Over</h2>
+        <p id="finalScore"></p>
+        <button id="restartButton">リスタート</button>
+      </div>
+    </main>
   </div>
 
   <script>
-    // ゲームエリア取得
+    // DOM要素参照
     const gameArea = document.getElementById('gameArea');
+    const scoreDisplay = document.getElementById('score');
+    const timeLeftDisplay = document.getElementById('timeLeft');
+    const gameOverOverlay = document.getElementById('gameOverOverlay');
+    const finalScore = document.getElementById('finalScore');
+    const restartButton = document.getElementById('restartButton');
 
-    // 画像ファイルを同ディレクトリに置く想定
-    const sumoImageURL = "./osumousan.png";
+    // 効果音の準備（同ディレクトリにdosukoi.mp3を置く想定）
+    const dosukoiAudio = new Audio('./dosukoi.mp3');
 
     // スポーン間隔(ms)
     const spawnInterval = 1000;
     let spawnTimer;
 
-    // お相撲さんを生成して落下させる関数
+    // 制限時間 (秒)
+    const GAME_TIME = 30;
+    let timeLeft = GAME_TIME;
+    let timeCounter; // 制限時間のタイマー
+
+    // スコア
+    let score = 0;
+
+    // ゲーム開始時に呼ばれる関数
+    function startGame() {
+      resetGameState();
+
+      // お相撲さんの出現を定期的に実行
+      spawnTimer = setInterval(spawnSumo, spawnInterval);
+
+      // 制限時間のカウントダウン
+      timeCounter = setInterval(() => {
+        timeLeft--;
+        timeLeftDisplay.textContent = timeLeft;
+        if (timeLeft <= 0) {
+          // ゲーム終了
+          endGame();
+        }
+      }, 1000);
+    }
+
+    // お相撲さん生成
     function spawnSumo() {
-      // ゲームエリアの幅・高さを毎回再取得（画面回転等に対応可能）
       const gameRect = gameArea.getBoundingClientRect();
       const gameWidth = gameRect.width;
       const gameHeight = gameRect.height;
+      const sumoSize = Math.min(gameWidth, gameHeight) * 0.15;
 
-      // img要素作成
       const sumo = document.createElement('img');
-      sumo.src = sumoImageURL;
+      sumo.src = "./osumousan.png";
       sumo.className = 'sumo';
 
-      // 初期位置(横方向はランダムに、縦方向は上外から出現)
-      const sumoSize = Math.min(gameWidth, gameHeight) * 0.15; // 15vmin相当
+      // ランダムな位置
       const startX = Math.random() * (gameWidth - sumoSize);
       sumo.style.left = startX + 'px';
       sumo.style.top = (-sumoSize) + 'px';
 
-      // タップ(クリック)で消して「どすこい」表示
-      sumo.addEventListener('click', () => {
-        showDosukoi(sumo.offsetLeft, sumo.offsetTop);
-        sumo.remove();
-      });
+      // タップ/クリック（スマホ・PC両対応） → dosukoi表示 & 効果音再生
+      sumo.addEventListener('touchstart', onTapSumo);
+      sumo.addEventListener('click', onTapSumo);
 
       gameArea.appendChild(sumo);
 
       // 落下アニメーション
       let posY = -sumoSize;
       function fall() {
-        posY += 2; // 落下速度(ピクセル/フレーム)
+        if (!spawnTimer) return; // ゲーム終了などでspawnTimerがクリアされていたら止める
+
+        posY += 2; // 落下速度
         sumo.style.top = posY + 'px';
 
-        // 画面外下まで落ちたら要素を除去
+        // 画面下から外に出たら消去
         if (posY > gameHeight) {
           sumo.remove();
         } else {
@@ -139,35 +211,74 @@
         }
       }
       requestAnimationFrame(fall);
+
+      // お相撲さんタップ時
+      function onTapSumo(e) {
+        e.preventDefault(); // モバイルでの画面拡大などを防止
+        // スコア加算
+        score++;
+        scoreDisplay.textContent = score;
+
+        // 「どすこい」テキスト表示
+        showDosukoi(sumo.offsetLeft, sumo.offsetTop);
+
+        // 効果音再生
+        dosukoiAudio.currentTime = 0; // 連続タップでも頭出し再生
+        dosukoiAudio.play();
+
+        // お相撲さんを消す
+        sumo.remove();
+      }
     }
 
-    // 「どすこい」を表示する関数
+    // 「どすこい」表示
     function showDosukoi(x, y) {
       const text = document.createElement('div');
       text.className = 'dosukoi';
       text.textContent = 'どすこい！';
-
-      // お相撲さん付近に表示
       text.style.left = (x + 10) + 'px';
       text.style.top = (y + 10) + 'px';
-
       gameArea.appendChild(text);
 
-      // 1秒後にDOMから除去
+      // 1秒後に消去
       setTimeout(() => {
         text.remove();
       }, 1000);
     }
 
-    // ゲーム開始
-    function startGame() {
-      spawnTimer = setInterval(spawnSumo, spawnInterval);
+    // ゲーム終了処理
+    function endGame() {
+      // スポーンを停止
+      clearInterval(spawnTimer);
+      spawnTimer = null;
+
+      // 制限時間のタイマーも停止
+      clearInterval(timeCounter);
+
+      // 画面上にOverlayを出す
+      finalScore.textContent = `あなたのスコアは ${score} です！`;
+      gameOverOverlay.style.visibility = 'visible';
     }
 
-    // ゲーム停止
-    function stopGame() {
-      clearInterval(spawnTimer);
+    // ゲーム状態をリセット
+    function resetGameState() {
+      // すでに表示されていたお相撲さんや吹き出しを消す
+      gameArea.querySelectorAll('.sumo, .dosukoi').forEach(el => el.remove());
+
+      // スコアと時間を初期化
+      score = 0;
+      scoreDisplay.textContent = score;
+      timeLeft = GAME_TIME;
+      timeLeftDisplay.textContent = timeLeft;
+
+      // ゲームオーバー表示を隠す
+      gameOverOverlay.style.visibility = 'hidden';
     }
+
+    // 「リスタート」ボタンクリック
+    restartButton.addEventListener('click', () => {
+      startGame();
+    });
 
     // ページ読み込み時にゲーム開始
     window.addEventListener('load', startGame);
