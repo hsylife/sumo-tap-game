@@ -9,19 +9,17 @@
       margin: 0;
       padding: 0;
       height: 100%;
-      overflow: hidden; /* スクロールしない */
+      overflow: hidden;
       font-family: sans-serif;
       background-color: #f5f5f5;
       box-sizing: border-box;
     }
-
     .container {
       display: flex;
       flex-direction: column;
       height: 100%;
       text-align: center;
     }
-
     header {
       flex: 0 0 auto;
       padding: 10px 0;
@@ -29,28 +27,25 @@
       color: #333;
       border-bottom: 2px solid #ccc;
     }
-
     header h1 {
       margin: 0;
       font-size: 1.2rem;
       margin-bottom: 8px;
     }
-
     .info {
       display: flex;
       justify-content: center;
       gap: 20px;
       font-weight: bold;
     }
-
+    /* タイマー表示は削除 */
     #gameArea {
       position: relative;
       flex: 1 1 auto;
       background-color: #fff;
       overflow: hidden;
     }
-
-    /* お相撲さん / 行司さん 共通 */
+    /* キャラクター共通 */
     .character {
       position: absolute;
       width: 15vmin;
@@ -62,14 +57,14 @@
     .character:active {
       transform: scale(0.9);
     }
-
+    /* お相撲さんは下層に */
     .sumo {
-      /* 必要あればお相撲さんだけのスタイルを追加 */
+      z-index: 1;
     }
+    /* 行司は常に最前面に */
     .gyoji {
-      /* 行司さん用のスタイルを追加 */
+      z-index: 10;
     }
-
     .dosukoi {
       position: absolute;
       padding: 5px 10px;
@@ -84,8 +79,7 @@
       0%   { opacity: 1; }
       100% { opacity: 0; }
     }
-
-    /* コンボが閾値以上のときに大きく表示する「どすこい！どすこい！」 */
+    /* コンボオーバーレイ */
     #comboOverlay {
       position: absolute;
       top: 50%;
@@ -98,22 +92,21 @@
       opacity: 0;
       transition: opacity 0.3s;
     }
-
-    /* ゲーム終了(「そこまで」)表示 */
+    /* ゲームオーバーオーバーレイ */
     #gameOverOverlay {
       position: absolute;
       top: 0;
       left: 0;
       width: 100%;
       height: 100%;
-      background-color: rgba(0, 0, 0, 0.5); /* 半透明の背景 */
+      background-color: rgba(0, 0, 0, 0.5);
       display: flex;
       flex-direction: column;
       justify-content: center;
       align-items: center;
       color: #fff;
       font-size: 2rem;
-      visibility: hidden; /* 初期は非表示 */
+      visibility: hidden;
     }
     #gameOverOverlay h2 {
       margin: 0 0 20px;
@@ -136,10 +129,8 @@
       <h1>お相撲さんをタップしてストレス解消！</h1>
       <div class="info">
         <div>スコア: <span id="score">0</span></div>
-        <div>残り時間: <span id="timeLeft">30</span>秒</div>
       </div>
     </header>
-
     <main id="gameArea">
       <!-- コンボ時の大きな表示 -->
       <div id="comboOverlay">どすこい！どすこい！</div>
@@ -151,75 +142,73 @@
       </div>
     </main>
   </div>
-
   <script>
     // DOM要素
     const gameArea         = document.getElementById('gameArea');
     const scoreDisplay     = document.getElementById('score');
-    const timeLeftDisplay  = document.getElementById('timeLeft');
     const gameOverOverlay  = document.getElementById('gameOverOverlay');
     const finalScore       = document.getElementById('finalScore');
     const restartButton    = document.getElementById('restartButton');
     const comboOverlay     = document.getElementById('comboOverlay');
 
-    // 効果音の準備（同ディレクトリにdosukoi.mp3を置く想定）
+    // 効果音 (dosukoi.mp3 を同ディレクトリに配置)
     const dosukoiAudio = new Audio('./dosukoi.mp3');
 
-    // ゲーム関連の設定
-    let spawnInterval = 1000;       // ミリ秒ごとに出現
-    let spawnTimer;                 // setIntervalのID
-    const GAME_TIME = 30;           // 制限時間
-    let timeLeft    = GAME_TIME;
-    let timeCounter;                // 制限時間カウントダウン用
+    // ゲーム設定
+    let spawnInterval = 1000; // ミリ秒ごとに生成
+    let spawnTimer;
 
     // スコア・コンボ管理
     let score = 0;
     let combo = 0;
-
-    // 「どすこい！どすこい！」を表示するコンボ閾値(初期3)
     let comboDisplayThreshold = 3;
 
-    // ゲームオーバーかどうかのフラグ
+    // 行司出現確率（初期5%）→ spawnCharacters で毎回上昇
+    let gyojiSpawnChance = 0.05;
+
+    // ゲームオーバーフラグ
     let isGameOver = false;
 
-    // ----- ゲーム開始 -----
+    // ----- ゲーム開始 ---------
     function startGame() {
       resetGameState();
-
-      // 一定間隔でキャラクター(お相撲さん/行司さん)を生成
       spawnTimer = setInterval(spawnCharacters, spawnInterval);
-
-      // 制限時間カウントダウン
-      timeCounter = setInterval(() => {
-        timeLeft--;
-        timeLeftDisplay.textContent = timeLeft;
-        if (timeLeft <= 0) {
-          endGame();
-        }
-      }, 1000);
     }
 
-    // ----- キャラクターのまとめ生成(1~3体) -----
+    // ----- キャラクター生成 -----
     function spawnCharacters() {
-      if (isGameOver) return; // ゲーム終了後は生成しない
+      if (isGameOver) return;
+      // 行司出現確率を加速（最大20%まで）
+      gyojiSpawnChance = Math.min(gyojiSpawnChance + 0.02, 0.2);
 
-      const count = Math.floor(Math.random() * 3) + 1; // 1～3
-      for (let i = 0; i < count; i++) {
-        spawnOneCharacter();
+      // 10% の確率でフラッドイベント（強制的にお相撲さんのみ生成）
+      const floodChance = 0.1;
+      let count;
+      if (Math.random() < floodChance) {
+        count = Math.floor(Math.random() * 11) + 10; // 10～20体
+        for (let i = 0; i < count; i++) {
+          spawnOneCharacter(true);  // forcedSumo → お相撲さんのみ
+        }
+      } else {
+        count = Math.floor(Math.random() * 3) + 1; // 通常は1～3体
+        for (let i = 0; i < count; i++) {
+          spawnOneCharacter();
+        }
       }
     }
 
-    // ----- キャラクター(お相撲さん or 行司さん)1体生成 -----
-    function spawnOneCharacter() {
+    // ----- キャラクター1体生成 -----
+    // forcedSumo が true の場合、必ずお相撲さんとして生成
+    function spawnOneCharacter(forcedSumo = false) {
       const gameRect = gameArea.getBoundingClientRect();
       const gameWidth = gameRect.width;
       const gameHeight = gameRect.height;
       const size = Math.min(gameWidth, gameHeight) * 0.15;
 
-      // 5% の確率で行司さん
-      const isGyoji = Math.random() < 0.05;
+      // forcedSumo でなければ、行司出現確率を使用
+      const isGyoji = forcedSumo ? false : (Math.random() < gyojiSpawnChance);
 
-      // img要素作成
+      // img 要素作成
       const charImg = document.createElement('img');
       charImg.classList.add('character');
       if (isGyoji) {
@@ -230,74 +219,88 @@
         charImg.src = './osumousan.png';
       }
 
-      // 画面上端外から落ちてくる
-      const startX = Math.random() * (gameWidth - size);
-      charImg.style.left = startX + 'px';
-      charImg.style.top  = -size + 'px';
-
-      // タップイベント(スマホ/PC両方)
+      // タップイベント登録 (タッチ・クリックの両対応)
       charImg.addEventListener('touchstart', (e) => onTapCharacter(e, isGyoji, charImg));
-      charImg.addEventListener('click',      (e) => onTapCharacter(e, isGyoji, charImg));
+      charImg.addEventListener('click', (e) => onTapCharacter(e, isGyoji, charImg));
 
       gameArea.appendChild(charImg);
 
-      // 落下アニメーション
-      let posY = -size;
-      function fall() {
-        if (isGameOver || !spawnTimer) {
-          // ゲーム終了後はキャラを除去して終わり
-          charImg.remove();
-          return;
-        }
-        posY += 2; // 落下速度
-        charImg.style.top = posY + 'px';
-
-        // 画面下から外に出たらキャラ削除
-        if (posY > gameHeight) {
-          // お相撲さんだった場合はコンボリセット
-          if (charImg.classList.contains('sumo')) {
-            combo = 0;
+      if (isGyoji) {
+        // 行司の場合：画面内のランダムな位置から開始し、ウロウロ移動
+        charImg.style.left = (Math.random() * (gameWidth - size)) + 'px';
+        charImg.style.top  = (Math.random() * (gameHeight - size)) + 'px';
+        let dx = (Math.random() * 4 - 2);
+        let dy = (Math.random() * 4 - 2);
+        if (dx === 0 && dy === 0) { dx = 1; }
+        function wander() {
+          if (isGameOver || !spawnTimer) {
+            charImg.remove();
+            return;
           }
-          charImg.remove();
-        } else {
-          requestAnimationFrame(fall);
+          let currentLeft = parseFloat(charImg.style.left);
+          let currentTop  = parseFloat(charImg.style.top);
+          let newLeft = currentLeft + dx;
+          let newTop  = currentTop + dy;
+          // 画面端で反転
+          if (newLeft < 0 || newLeft > gameWidth - size) {
+            dx = -dx;
+            newLeft = currentLeft + dx;
+          }
+          if (newTop < 0 || newTop > gameHeight - size) {
+            dy = -dy;
+            newTop = currentTop + dy;
+          }
+          charImg.style.left = newLeft + 'px';
+          charImg.style.top  = newTop + 'px';
+          requestAnimationFrame(wander);
         }
+        requestAnimationFrame(wander);
+      } else {
+        // お相撲さんの場合：画面上部外から落下
+        const startX = Math.random() * (gameWidth - size);
+        charImg.style.left = startX + 'px';
+        charImg.style.top  = -size + 'px';
+        let posY = -size;
+        function fall() {
+          if (isGameOver || !spawnTimer) {
+            charImg.remove();
+            return;
+          }
+          posY += 2;
+          charImg.style.top = posY + 'px';
+          // 画面下部外に出たら削除 (タップされなければコンボリセット)
+          if (posY > gameHeight) {
+            combo = 0;
+            charImg.remove();
+          } else {
+            requestAnimationFrame(fall);
+          }
+        }
+        requestAnimationFrame(fall);
       }
-      requestAnimationFrame(fall);
     }
 
     // ----- タップ時の処理 -----
     function onTapCharacter(event, isGyoji, element) {
       event.preventDefault();
-
-      // ゲームが終わっていたら何もしない
       if (isGameOver) return;
-
       if (isGyoji) {
-        // 行司さん: 減点 & コンボリセット
-        score = Math.max(0, score - 5);
-        combo = 0;
+        // 行司タップで即ゲームオーバー
+        endGame();
+        return;
       } else {
-        // お相撲さん: コンボ加算 & スコア加算
+        // お相撲さんの場合：コンボ加算＆スコア加算
         combo++;
-        const bonus = 1 + combo; 
+        const bonus = 1 + combo;
         score += bonus;
-
-        // 「どすこい！」吹き出し
         showDosukoi(element.offsetLeft, element.offsetTop);
-
-        // 効果音再生
-        dosukoiAudio.currentTime = 0;
-        dosukoiAudio.play();
-
-        // コンボが閾値に達したら「どすこい！どすこい！」大きく表示
+        const soundClone = dosukoiAudio.cloneNode();
+        soundClone.play();
         if (combo >= comboDisplayThreshold) {
           showDoubleDosukoi();
-          // 閾値を引き上げる(次回は +3)
           comboDisplayThreshold += 3;
         }
       }
-
       scoreDisplay.textContent = score;
       element.remove();
     }
@@ -310,59 +313,39 @@
       text.style.left = (x + 10) + 'px';
       text.style.top  = (y + 10) + 'px';
       gameArea.appendChild(text);
-
-      // 1秒後に消去
-      setTimeout(() => {
-        text.remove();
-      }, 1000);
+      setTimeout(() => { text.remove(); }, 1000);
     }
 
-    // ----- 大きく「どすこい！どすこい！」表示 -----
+    // ----- 大きな「どすこい！どすこい！」表示 -----
     function showDoubleDosukoi() {
       comboOverlay.style.opacity = '1';
-      // 短時間(0.5秒)で消す
-      setTimeout(() => {
-        comboOverlay.style.opacity = '0';
-      }, 500);
+      setTimeout(() => { comboOverlay.style.opacity = '0'; }, 500);
     }
 
     // ----- ゲーム終了 -----
     function endGame() {
-      isGameOver = true;           // 終了フラグON
-      clearInterval(spawnTimer);   // スポーン停止
+      isGameOver = true;
+      clearInterval(spawnTimer);
       spawnTimer = null;
-      clearInterval(timeCounter);  // 時間カウント停止
-
-      // 結果表示
       finalScore.textContent = `あなたのスコアは ${score} です！`;
       gameOverOverlay.style.visibility = 'visible';
     }
 
-    // ----- ゲーム状態をリセット -----
+    // ----- ゲーム状態リセット -----
     function resetGameState() {
-      // 各要素の削除
       gameArea.querySelectorAll('.character, .dosukoi').forEach(el => el.remove());
-
-      // スコアや時間の初期化
       score  = 0;
       combo  = 0;
       scoreDisplay.textContent = score;
-      timeLeft = GAME_TIME;
-      timeLeftDisplay.textContent = timeLeft;
       comboDisplayThreshold = 3;
-
-      // オーバーレイを非表示
+      gyojiSpawnChance = 0.05;
       gameOverOverlay.style.visibility = 'hidden';
       comboOverlay.style.opacity = '0';
-
-      // フラグ初期化
       isGameOver = false;
     }
 
-    // リスタートボタン
-    restartButton.addEventListener('click', () => {
-      startGame();
-    });
+    // リスタートボタンのイベント
+    restartButton.addEventListener('click', () => { startGame(); });
 
     // ページ読み込み時にゲーム開始
     window.addEventListener('load', startGame);
