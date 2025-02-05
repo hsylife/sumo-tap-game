@@ -126,10 +126,18 @@
       flex-direction: column;
       justify-content: center;
       align-items: center;
+      padding: 20px;
+      box-sizing: border-box;
     }
     #startScreen h1 {
       font-size: 2rem;
       margin-bottom: 20px;
+    }
+    /* ルール説明 */
+    #gameInstructions {
+      font-size: 1.2rem;
+      margin-bottom: 20px;
+      line-height: 1.5;
     }
     #startButton {
       padding: 10px 20px;
@@ -148,10 +156,16 @@
     <!-- スタート画面 -->
     <div id="startScreen">
       <h1>おすもうタップ</h1>
+      <!-- ルール説明（画像を埋め込み） -->
+      <p id="gameInstructions">
+        <img src="./osumousan.png" alt="おすもうさん" style="vertical-align: middle; width:40px; height:40px; margin:0 5px;"> をタップすると<br>
+        ポイントがもらえるよ！<br><br>
+        でも、<img src="./gyoujisan.png" alt="ぎょうじさん" style="vertical-align: middle; width:40px; height:40px; margin:0 5px;"> をタップしたらゲームオーバー！<br>
+      </p>
       <button id="startButton">START</button>
     </div>
     <header>
-      <h1>お相撲さんをタップしてストレス解消！</h1>
+      <h1>おすもうさんをタップしてポイントをもらおう！</h1>
       <div class="info">
         <div>スコア: <span id="score">0</span></div>
       </div>
@@ -185,14 +199,12 @@
     let spawnInterval = 1000; // ミリ秒ごとに生成
     let spawnTimer;
 
-    // スコア・コンボ管理
+    // スコア管理（コンボは今回使用しません）
     let score = 0;
-    let combo = 0;
-    let comboDisplayThreshold = 3;
 
     // 行司出現確率（初期5%）と giraffe 出現率
     let gyojiSpawnChance = 0.05;
-    const baseGiraffeSpawnChance = 0.05;
+    const baseGiraffeSpawnChance = 0.02;
     let giraffeEnabled = false; // 最初は giraffe は出現しない
 
     // ゲームオーバーフラグ
@@ -261,7 +273,6 @@
           let dy = (Math.random() < 0.3) ? (Math.random() * 2 - 1) : 0; // 30%の確率で上下移動
           let newLeft = currentLeft + dx;
           let newTop  = currentTop + dy;
-          // 画面内に収める
           if (newTop < 0) newTop = 0;
           if (newTop > gameHeight - size) newTop = gameHeight - size;
           charImg.style.left = newLeft + 'px';
@@ -333,7 +344,6 @@
             posY += 2;
             charImg.style.top = posY + 'px';
             if (posY > gameHeight) {
-              combo = 0;
               charImg.remove();
             } else {
               requestAnimationFrame(fall);
@@ -359,9 +369,9 @@
         endGame();
         return;
       } else if (type === 'giraffe') {
-        // giraffe タップ時：graffee.mp3 を再生
-        const graffeeAudio = new Audio('./graffee.mp3');
-        graffeeAudio.play();
+        // キリンタップ時：giraffe.mp3 を再生
+        const giraffeAudio = new Audio('./giraffe.mp3');
+        giraffeAudio.play();
         // 現在の行司要素の半数をランダムに削除
         const gyojis = Array.from(document.querySelectorAll('.gyoji'));
         const removeCount = Math.floor(gyojis.length / 2);
@@ -370,25 +380,18 @@
           gyojis[i].remove();
         }
       } else if (type === 'sumo') {
-        // お相撲さんの場合、データ属性で大きい/小さいを判定
         if (element.dataset.sumoSize === "big") {
-          // 大きい場合は固定で2point追加
+          // 大きいお相撲さんの場合：固定で2pt追加
           score += 2;
           showDosukoi(element.offsetLeft, element.offsetTop);
           const soundClone = dosukoiAudio.cloneNode();
           soundClone.play();
         } else {
-          // 小さい場合はコンボ加算＆スコア加算
-          combo++;
-          const bonus = 1 + combo;
-          score += bonus;
+          // 小さいお相撲さんの場合：固定で1pt追加
+          score += 1;
           showDosukoi(element.offsetLeft, element.offsetTop);
-          const soundClone = dosukoiAudio.cloneNode();
-          soundClone.play();
-          if (combo >= comboDisplayThreshold) {
-            showDoubleDosukoi();
-            comboDisplayThreshold += 3;
-          }
+          const smallSumoAudio = new Audio('./osumousan-small.mp3');
+          smallSumoAudio.play();
         }
       }
       scoreDisplay.textContent = score;
@@ -417,7 +420,6 @@
       isGameOver = true;
       clearInterval(spawnTimer);
       spawnTimer = null;
-      // ハイスコアの取得・更新
       let storedHighScore = parseInt(localStorage.getItem('highScore')) || 0;
       if (score > storedHighScore) {
         localStorage.setItem('highScore', score);
@@ -431,9 +433,7 @@
     function resetGameState() {
       gameArea.querySelectorAll('.character, .dosukoi').forEach(el => el.remove());
       score  = 0;
-      combo  = 0;
       scoreDisplay.textContent = score;
-      comboDisplayThreshold = 3;
       gyojiSpawnChance = 0.05;
       gameOverOverlay.style.visibility = 'hidden';
       comboOverlay.style.opacity = '0';
