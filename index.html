@@ -19,6 +19,7 @@
       flex-direction: column;
       height: 100%;
       text-align: center;
+      position: relative;
     }
     header {
       flex: 0 0 auto;
@@ -38,18 +39,14 @@
       gap: 20px;
       font-weight: bold;
     }
-    /* タイマー表示は削除 */
     #gameArea {
       position: relative;
       flex: 1 1 auto;
       background-color: #fff;
       overflow: hidden;
     }
-    /* キャラクター共通 */
     .character {
       position: absolute;
-      width: 15vmin;
-      height: 15vmin;
       cursor: pointer;
       user-select: none;
       transition: transform 0.2s;
@@ -57,15 +54,12 @@
     .character:active {
       transform: scale(0.9);
     }
-    /* お相撲さんは下層に */
     .sumo {
       z-index: 1;
     }
-    /* 行司は常に最前面に */
     .gyoji {
       z-index: 10;
     }
-    /* giraffe は特に z-index を指定しなくてもよい */
     .dosukoi {
       position: absolute;
       padding: 5px 10px;
@@ -80,7 +74,6 @@
       0%   { opacity: 1; }
       100% { opacity: 0; }
     }
-    /* コンボオーバーレイ */
     #comboOverlay {
       position: absolute;
       top: 50%;
@@ -93,7 +86,6 @@
       opacity: 0;
       transition: opacity 0.3s;
     }
-    /* ゲームオーバーオーバーレイ */
     #gameOverOverlay {
       position: absolute;
       top: 0;
@@ -108,6 +100,7 @@
       color: #fff;
       font-size: 2rem;
       visibility: hidden;
+      z-index: 15;
     }
     #gameOverOverlay h2 {
       margin: 0 0 20px;
@@ -122,10 +115,41 @@
       color: #333;
       font-weight: bold;
     }
+    /* スタート画面 */
+    #startScreen {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      background-color: #fff;
+      z-index: 20;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+    }
+    #startScreen h1 {
+      font-size: 2rem;
+      margin-bottom: 20px;
+    }
+    #startButton {
+      padding: 10px 20px;
+      font-size: 1rem;
+      cursor: pointer;
+      border: none;
+      border-radius: 8px;
+      background-color: #fde910;
+      color: #333;
+      font-weight: bold;
+    }
   </style>
 </head>
 <body>
   <div class="container">
+    <!-- スタート画面 -->
+    <div id="startScreen">
+      <h1>おすもうタップ</h1>
+      <button id="startButton">START</button>
+    </div>
     <header>
       <h1>お相撲さんをタップしてストレス解消！</h1>
       <div class="info">
@@ -151,8 +175,10 @@
     const finalScore       = document.getElementById('finalScore');
     const restartButton    = document.getElementById('restartButton');
     const comboOverlay     = document.getElementById('comboOverlay');
+    const startScreen      = document.getElementById('startScreen');
+    const startButton      = document.getElementById('startButton');
 
-    // 効果音 (dosukoi.mp3 を同ディレクトリに配置)
+    // 効果音 (dosukoi.mp3)
     const dosukoiAudio = new Audio('./dosukoi.mp3');
 
     // ゲーム設定
@@ -164,16 +190,21 @@
     let combo = 0;
     let comboDisplayThreshold = 3;
 
-    // 行司出現確率（初期5%）と giraffe 出現確率（1%）
+    // 行司出現確率（初期5%）と giraffe 出現率
     let gyojiSpawnChance = 0.05;
-    const giraffeSpawnChance = 0.01;
+    const baseGiraffeSpawnChance = 0.05;
+    let giraffeEnabled = false; // 最初は giraffe は出現しない
 
     // ゲームオーバーフラグ
     let isGameOver = false;
 
     // ----- ゲーム開始 ---------
     function startGame() {
+      // スタート画面を非表示にする
+      startScreen.style.display = 'none';
       resetGameState();
+      // ゲーム開始後10秒で giraffe の出現を有効にする
+      setTimeout(() => { giraffeEnabled = true; }, 10000);
       spawnTimer = setInterval(spawnCharacters, spawnInterval);
     }
 
@@ -182,7 +213,6 @@
       if (isGameOver) return;
       // 行司出現確率を加速（最大20%まで）
       gyojiSpawnChance = Math.min(gyojiSpawnChance + 0.02, 0.2);
-
       // 10% の確率でフラッドイベント（強制的にお相撲さんのみ生成）
       const floodChance = 0.1;
       let count;
@@ -202,23 +232,48 @@
     // ----- キャラクター1体生成 -----
     // forcedSumo が true の場合、必ずお相撲さんとして生成
     function spawnOneCharacter(forcedSumo = false) {
-      const gameRect = gameArea.getBoundingClientRect();
-      const gameWidth = gameRect.width;
+      const gameRect   = gameArea.getBoundingClientRect();
+      const gameWidth  = gameRect.width;
       const gameHeight = gameRect.height;
-      const size = Math.min(gameWidth, gameHeight) * 0.15;
+      const baseSize   = Math.min(gameWidth, gameHeight) * 0.15;
 
       const charImg = document.createElement('img');
       charImg.classList.add('character');
       let type = '';
 
-      // forcedSumo でなければ、giraffe出現判定
-      if (!forcedSumo && Math.random() < giraffeSpawnChance) {
+      // giraffe 出現判定（forcedSumo でなく、かつ giraffeEnabled の場合のみ）
+      if (!forcedSumo && giraffeEnabled && Math.random() < baseGiraffeSpawnChance) {
         type = 'giraffe';
         charImg.classList.add('giraffe');
         charImg.src = './giraffe.png';
-        // 画面内のランダムな位置に表示
-        charImg.style.left = (Math.random() * (gameWidth - size)) + 'px';
-        charImg.style.top  = (Math.random() * (gameHeight - size)) + 'px';
+        // サイズは baseSize とし、左端外から出現、上下位置はランダム
+        const size = baseSize;
+        charImg.style.width  = size + 'px';
+        charImg.style.height = size + 'px';
+        charImg.style.left   = -size + 'px';  // 画面外の左から
+        charImg.style.top    = (Math.random() * (gameHeight - size)) + 'px';
+        // giraffe の動き：ゆっくり右へ、不規則な上下移動
+        function moveGiraffe() {
+          if (isGameOver || !charImg.parentElement) return;
+          let currentLeft = parseFloat(charImg.style.left);
+          let currentTop  = parseFloat(charImg.style.top);
+          let dx = 1 + Math.random() * 0.5;  // 1～1.5px/フレーム
+          let dy = (Math.random() < 0.3) ? (Math.random() * 2 - 1) : 0; // 30%の確率で上下移動
+          let newLeft = currentLeft + dx;
+          let newTop  = currentTop + dy;
+          // 画面内に収める
+          if (newTop < 0) newTop = 0;
+          if (newTop > gameHeight - size) newTop = gameHeight - size;
+          charImg.style.left = newLeft + 'px';
+          charImg.style.top  = newTop + 'px';
+          // 画面右端に出たら削除
+          if (newLeft > gameWidth) {
+            charImg.remove();
+            return;
+          }
+          requestAnimationFrame(moveGiraffe);
+        }
+        requestAnimationFrame(moveGiraffe);
       } else {
         // forcedSumo でなければ、行司出現確率を使用
         const isGyoji = forcedSumo ? false : (Math.random() < gyojiSpawnChance);
@@ -226,21 +281,15 @@
           type = 'gyoji';
           charImg.classList.add('gyoji');
           charImg.src = './gyoujisan.png';
-        } else {
-          type = 'sumo';
-          charImg.classList.add('sumo');
-          charImg.src = './osumousan.png';
-        }
-
-        if (isGyoji) {
-          // 行司の場合：画面内のランダムな位置から開始し、ウロウロ移動
-          charImg.style.left = (Math.random() * (gameWidth - size)) + 'px';
-          charImg.style.top  = (Math.random() * (gameHeight - size)) + 'px';
+          charImg.style.width  = baseSize + 'px';
+          charImg.style.height = baseSize + 'px';
+          charImg.style.left   = (Math.random() * (gameWidth - baseSize)) + 'px';
+          charImg.style.top    = (Math.random() * (gameHeight - baseSize)) + 'px';
           let dx = (Math.random() * 4 - 2);
           let dy = (Math.random() * 4 - 2);
           if (dx === 0 && dy === 0) { dx = 1; }
           function wander() {
-            if (isGameOver || !spawnTimer) {
+            if (isGameOver || !charImg.parentElement) {
               charImg.remove();
               return;
             }
@@ -248,12 +297,11 @@
             let currentTop  = parseFloat(charImg.style.top);
             let newLeft = currentLeft + dx;
             let newTop  = currentTop + dy;
-            // 画面端で反転
-            if (newLeft < 0 || newLeft > gameWidth - size) {
+            if (newLeft < 0 || newLeft > gameWidth - baseSize) {
               dx = -dx;
               newLeft = currentLeft + dx;
             }
-            if (newTop < 0 || newTop > gameHeight - size) {
+            if (newTop < 0 || newTop > gameHeight - baseSize) {
               dy = -dy;
               newTop = currentTop + dy;
             }
@@ -263,19 +311,27 @@
           }
           requestAnimationFrame(wander);
         } else {
-          // お相撲さんの場合：画面上部外から落下
+          // お相撲さんの生成
+          type = 'sumo';
+          charImg.classList.add('sumo');
+          charImg.src = './osumousan.png';
+          // 大きいか小さいかを 50% の確率で決定
+          const isBig = Math.random() < 0.5;
+          let size = isBig ? baseSize * 1.5 : baseSize;
+          charImg.dataset.sumoSize = isBig ? "big" : "small";
+          charImg.style.width  = size + 'px';
+          charImg.style.height = size + 'px';
           const startX = Math.random() * (gameWidth - size);
           charImg.style.left = startX + 'px';
           charImg.style.top  = -size + 'px';
           let posY = -size;
           function fall() {
-            if (isGameOver || !spawnTimer) {
+            if (isGameOver || !charImg.parentElement) {
               charImg.remove();
               return;
             }
             posY += 2;
             charImg.style.top = posY + 'px';
-            // 画面下部外に出たら削除 (タップされなければコンボリセット)
             if (posY > gameHeight) {
               combo = 0;
               charImg.remove();
@@ -286,14 +342,11 @@
           requestAnimationFrame(fall);
         }
       }
-
-      // data 属性でキャラクター種別を設定
+      // キャラクター種別を data 属性に設定
       charImg.dataset.type = type;
-
-      // タップイベント登録 (タッチ・クリック両対応)
+      // タッチ・クリックのイベント登録
       charImg.addEventListener('touchstart', (e) => onTapCharacter(e, charImg.dataset.type, charImg));
       charImg.addEventListener('click', (e) => onTapCharacter(e, charImg.dataset.type, charImg));
-
       gameArea.appendChild(charImg);
     }
 
@@ -302,14 +355,14 @@
       event.preventDefault();
       if (isGameOver) return;
       if (type === 'gyoji') {
-        // 行司タップで即ゲームオーバー
+        // 行司をタップするとゲームオーバー
         endGame();
         return;
       } else if (type === 'giraffe') {
-        // giraffeタップ時：giraffe.mp3 を再生
-        const giraffeAudio = new Audio('./giraffe.mp3');
-        giraffeAudio.play();
-        // 現在画面にある行司要素の半数を削除（ランダムに選択）
+        // giraffe タップ時：graffee.mp3 を再生
+        const graffeeAudio = new Audio('./graffee.mp3');
+        graffeeAudio.play();
+        // 現在の行司要素の半数をランダムに削除
         const gyojis = Array.from(document.querySelectorAll('.gyoji'));
         const removeCount = Math.floor(gyojis.length / 2);
         gyojis.sort(() => Math.random() - 0.5);
@@ -317,16 +370,25 @@
           gyojis[i].remove();
         }
       } else if (type === 'sumo') {
-        // お相撲さんの場合：コンボ加算＆スコア加算
-        combo++;
-        const bonus = 1 + combo;
-        score += bonus;
-        showDosukoi(element.offsetLeft, element.offsetTop);
-        const soundClone = dosukoiAudio.cloneNode();
-        soundClone.play();
-        if (combo >= comboDisplayThreshold) {
-          showDoubleDosukoi();
-          comboDisplayThreshold += 3;
+        // お相撲さんの場合、データ属性で大きい/小さいを判定
+        if (element.dataset.sumoSize === "big") {
+          // 大きい場合は固定で2point追加
+          score += 2;
+          showDosukoi(element.offsetLeft, element.offsetTop);
+          const soundClone = dosukoiAudio.cloneNode();
+          soundClone.play();
+        } else {
+          // 小さい場合はコンボ加算＆スコア加算
+          combo++;
+          const bonus = 1 + combo;
+          score += bonus;
+          showDosukoi(element.offsetLeft, element.offsetTop);
+          const soundClone = dosukoiAudio.cloneNode();
+          soundClone.play();
+          if (combo >= comboDisplayThreshold) {
+            showDoubleDosukoi();
+            comboDisplayThreshold += 3;
+          }
         }
       }
       scoreDisplay.textContent = score;
@@ -355,7 +417,13 @@
       isGameOver = true;
       clearInterval(spawnTimer);
       spawnTimer = null;
-      finalScore.textContent = `あなたのスコアは ${score} です！`;
+      // ハイスコアの取得・更新
+      let storedHighScore = parseInt(localStorage.getItem('highScore')) || 0;
+      if (score > storedHighScore) {
+        localStorage.setItem('highScore', score);
+        storedHighScore = score;
+      }
+      finalScore.textContent = `今回のスコア: ${score} / 最高スコア: ${storedHighScore}`;
       gameOverOverlay.style.visibility = 'visible';
     }
 
@@ -370,13 +438,17 @@
       gameOverOverlay.style.visibility = 'hidden';
       comboOverlay.style.opacity = '0';
       isGameOver = false;
+      giraffeEnabled = false;
     }
 
     // リスタートボタンのイベント
-    restartButton.addEventListener('click', () => { startGame(); });
+    restartButton.addEventListener('click', () => {
+      gameOverOverlay.style.visibility = 'hidden';
+      startGame();
+    });
 
-    // ページ読み込み時にゲーム開始
-    window.addEventListener('load', startGame);
+    // スタート画面の START ボタン
+    startButton.addEventListener('click', startGame);
   </script>
 </body>
 </html>
